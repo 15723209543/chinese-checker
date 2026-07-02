@@ -6,7 +6,7 @@ std::wstring gamedata_phase_text(phasekind phase)
     switch (phase)
     {
     case phase_player_count:
-        return L"选择人数";
+        return L"游戏设置";
     case phase_piece_count:
         return L"选择棋子数量";
     case phase_select_piece:

@@ -162,6 +162,10 @@ void board_build(boarddata& board)
 // 这个函数根据人数返回对称分配的起点角。
 std::vector<int> board_get_arms(int playercount)
 {
+    if (playercount == 2)
+    {
+        return { 0, 3 };
+    }
     if (playercount == 3)
     {
         return { 0, 2, 4 };

@@ -23,6 +23,9 @@
     <ClCompile Include="src\gamedata.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="src\keyboard.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
     <ClCompile Include="src\logger.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
@@ -41,6 +44,12 @@
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="include\gamedata.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="include\keyboard.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="include\keyboard_data.h">
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="include\logger.h">

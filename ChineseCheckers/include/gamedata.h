@@ -21,8 +21,11 @@ enum buttonkind
     button_back = 1,
     button_player_count = 2,
     button_piece_count = 3,
+    button_player_minus = 4,
     button_restart = 5,
-    button_exit = 6
+    button_exit = 6,
+    button_player_plus = 7,
+    button_start_setup = 8
 };
 
 struct jumpdata

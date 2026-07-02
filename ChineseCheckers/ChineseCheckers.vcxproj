@@ -139,6 +139,7 @@
     <ClCompile Include="src\drawer.cpp" />
     <ClCompile Include="src\game.cpp" />
     <ClCompile Include="src\gamedata.cpp" />
+    <ClCompile Include="src\keyboard.cpp" />
     <ClCompile Include="src\logger.cpp" />
     <ClCompile Include="src\main.cpp" />
   </ItemGroup>
@@ -147,6 +148,8 @@
     <ClInclude Include="include\drawer.h" />
     <ClInclude Include="include\game.h" />
     <ClInclude Include="include\gamedata.h" />
+    <ClInclude Include="include\keyboard.h" />
+    <ClInclude Include="include\keyboard_data.h" />
     <ClInclude Include="include\logger.h" />
     <ClInclude Include="include\main.h" />
     <ClInclude Include="include\mapdata.h" />

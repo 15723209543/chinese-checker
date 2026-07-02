@@ -1,6 +1,7 @@
 #include "drawer.h"
 
 #include "board.h"
+#include "keyboard.h"
 #include "mapdata.h"
 
 #include <algorithm>
@@ -18,6 +19,15 @@ static void drawer_text_rect(int left, int top, int right, int bottom, const std
     RECT rect{ left, top, right, bottom }; // rect 保存文字绘制区域。
     settextcolor(color);
     drawtext(text.c_str(), &rect, format);
+}
+
+// 这个函数在指定圆形区域中心绘制编号。
+static void drawer_number_text(int centerx, int centery, const std::wstring& text, int color)
+{
+    RECT rect{ centerx - 16, centery - 12, centerx + 16, centery + 12 }; // rect 保存编号绘制区域。
+    settextstyle(16, 0, L"微软雅黑");
+    settextcolor(color);
+    drawtext(text.c_str(), &rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
 }
 
 // 这个函数绘制右侧按钮。
@@ -67,6 +77,14 @@ static void drawer_targets(const boarddata& board, const gamestate& state)
         setlinestyle(PS_SOLID, 3);
         circle(static_cast<int>(point.x), static_cast<int>(point.y), map_target_radius);
         setlinestyle(PS_SOLID, 1);
+
+        // number 保存键盘操作时该落点的编号。
+        int number = keyboard_get_target_number(state, pointid);
+        if (number > 0)
+        {
+            drawer_number_text(static_cast<int>(point.x), static_cast<int>(point.y),
+                std::to_wstring(number), RGB(24, 146, 88));
+        }
     }
 }
 
@@ -85,6 +103,14 @@ static void drawer_pieces(const boarddata& board, const gamestate& state)
         setlinestyle(PS_SOLID, index == state.selectedpiece ? 4 : 2);
         circle(static_cast<int>(point.x), static_cast<int>(point.y), map_piece_radius);
         setlinestyle(PS_SOLID, 1);
+
+        // number 保存键盘操作时该棋子的编号。
+        int number = keyboard_get_piece_number(state, index);
+        if (number >= 0)
+        {
+            drawer_number_text(static_cast<int>(point.x), static_cast<int>(point.y),
+                std::to_wstring(number), RGB(255, 255, 255));
+        }
     }
 }
 
@@ -116,6 +142,33 @@ static void drawer_progress(const gamestate& state, int playerindex, int top)
     solidrectangle(left, top + 32, left + static_cast<int>(width * rate), top + 46);
     setlinecolor(RGB(168, 176, 188));
     rectangle(left, top + 32, left + width, top + 46);
+}
+
+// 这个函数绘制键盘操作编号提示。
+static void drawer_keyboard_info(const gamestate& state, int top)
+{
+    if (state.phase == phase_select_piece)
+    {
+        // text 保存当前玩家棋子编号列表。
+        std::wstring text = keyboard_make_piece_text(state);
+        if (!text.empty())
+        {
+            drawer_text_rect(map_left_width + 34, top, map_window_width - 24, top + 26,
+                L"当前棋子编号：" + text, RGB(34, 43, 55), DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+        }
+    }
+    else if (state.phase == phase_select_target)
+    {
+        // text 保存当前可走位置编号列表。
+        std::wstring text = keyboard_make_target_text(state);
+        if (!text.empty())
+        {
+            drawer_text_rect(map_left_width + 34, top, map_window_width - 24, top + 26,
+                L"可走位置编号：" + text, RGB(34, 43, 55), DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+            drawer_text_rect(map_left_width + 34, top + 26, map_window_width - 24, top + 52,
+                L"0：返回上一步", RGB(90, 99, 113), DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+        }
+    }
 }
 
 // 这个函数绘制右侧信息栏。
@@ -154,6 +207,10 @@ static void drawer_info(const gamestate& state)
     {
         drawer_progress(state, index, progress_top + index * 58);
     }
+
+    // keyboard_top 保存键盘编号提示区顶部。
+    int keyboard_top = progress_top + static_cast<int>(state.players.size()) * 58 + 16;
+    drawer_keyboard_info(state, keyboard_top);
 
     for (const buttondata& button : state.buttons)
     {
