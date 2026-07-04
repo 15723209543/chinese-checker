@@ -261,7 +261,15 @@ int board_find_piece_at(const gamestate& state, int pointid)
 {
     for (int index = 0; index < static_cast<int>(state.pieces.size()); ++index)
     {
-        if (state.pieces[index].pointid == pointid)
+        // piece 保存当前检查的棋子。
+        const piecedata& piece = state.pieces[index];
+        if (piece.pointid < 0 || piece.owner < 0 || piece.owner >= static_cast<int>(state.players.size()) ||
+            state.players[piece.owner].lost)
+        {
+            continue;
+        }
+
+        if (piece.pointid == pointid)
         {
             return index;
         }
@@ -284,9 +292,19 @@ std::vector<int> board_get_targets(const boarddata& board, const gamestate& stat
     {
         return {};
     }
+    if (state.pieces[pieceindex].owner < 0 ||
+        state.pieces[pieceindex].owner >= static_cast<int>(state.players.size()) ||
+        state.players[state.pieces[pieceindex].owner].lost)
+    {
+        return {};
+    }
 
     // startid 保存选中棋子的起点。
     int startid = state.pieces[pieceindex].pointid;
+    if (startid < 0 || startid >= static_cast<int>(board.points.size()))
+    {
+        return {};
+    }
     for (int nearid : board.points[startid].nearids)
     {
         if (!board_point_has_piece(state, nearid))
@@ -335,10 +353,19 @@ int board_count_finished(const gamestate& state, int playerindex)
     // count 保存已经进入停车区的棋子数量。
     int count = 0;
     const playerdata& player = state.players[playerindex];
+    if (player.lost)
+    {
+        return 0;
+    }
+
     for (int pieceindex : player.pieceids)
     {
         // pointid 保存棋子当前孔位。
         int pointid = state.pieces[pieceindex].pointid;
+        if (pointid < 0)
+        {
+            continue;
+        }
         if (std::find(player.targetids.begin(), player.targetids.end(), pointid) != player.targetids.end())
         {
             ++count;
@@ -351,6 +378,10 @@ int board_count_finished(const gamestate& state, int playerindex)
 bool board_player_finished(const gamestate& state, int playerindex)
 {
     if (playerindex < 0 || playerindex >= static_cast<int>(state.players.size()))
+    {
+        return false;
+    }
+    if (state.players[playerindex].lost)
     {
         return false;
     }

@@ -25,7 +25,16 @@ enum buttonkind
     button_restart = 5,
     button_exit = 6,
     button_player_plus = 7,
-    button_start_setup = 8
+    button_start_setup = 8,
+    button_step_time = 9,
+    button_total_time = 10,
+    button_setup_focus = 11,
+    button_step_minus = 12,
+    button_step_plus = 13,
+    button_total_minus = 14,
+    button_total_plus = 15,
+    button_piece_minus = 16,
+    button_piece_plus = 17
 };
 
 struct jumpdata
@@ -66,6 +75,7 @@ struct playerdata
     std::wstring colorname; // 玩家颜色名称。
     std::vector<int> pieceids; // 玩家拥有的棋子下标。
     std::vector<int> targetids; // 玩家停车区孔位编号。
+    bool lost; // 玩家是否已经超时判负。
 };
 
 struct buttondata
@@ -77,6 +87,7 @@ struct buttondata
     int code; // 按钮操作类型。
     int value; // 按钮携带的数值。
     bool enabled; // 按钮是否可点击。
+    bool selected; // 按钮所在设置项是否被选中。
     std::wstring text; // 按钮显示文字。
 };
 
@@ -94,6 +105,7 @@ struct gamestate
     phasekind phase; // 当前游戏阶段。
     int playercount; // 参加游戏的人数。
     int piececount; // 每个玩家的棋子数量。
+    int setupindex; // 设置页当前选中的项目，0步时、1总时、2人数、3棋子数。
     int currentorderindex; // 当前回合在出发顺序中的下标。
     int selectedpiece; // 当前选中的棋子下标，未选中为 -1。
     int winnerindex; // 获胜玩家下标，未获胜为 -1。

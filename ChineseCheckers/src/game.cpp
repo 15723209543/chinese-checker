@@ -1,18 +1,20 @@
 #include "game.h"
 
+#include "analysis.h"
 #include "board.h"
 #include "drawer.h"
 #include "keyboard.h"
 #include "keyboard_data.h"
 #include "logger.h"
 #include "mapdata.h"
+#include "time.h"
 
 #include <algorithm>
 #include <graphics.h>
 #include <windows.h>
 
 // 这个函数创建一个右侧信息栏按钮。
-static buttondata game_make_button(int top, int code, int value, const std::wstring& text, bool enabled = true)
+static buttondata game_make_button(int top, int code, int value, const std::wstring& text, bool enabled = true, bool selected = false)
 {
     buttondata button{};
     button.left = map_button_x;
@@ -22,12 +24,13 @@ static buttondata game_make_button(int top, int code, int value, const std::wstr
     button.code = code;
     button.value = value;
     button.enabled = enabled;
+    button.selected = selected;
     button.text = text;
     return button;
 }
 
 // 这个函数创建一个指定矩形的右侧信息栏按钮。
-static buttondata game_make_rect_button(int left, int top, int right, int bottom, int code, int value, const std::wstring& text, bool enabled = true)
+static buttondata game_make_rect_button(int left, int top, int right, int bottom, int code, int value, const std::wstring& text, bool enabled = true, bool selected = false)
 {
     buttondata button{};
     button.left = left;
@@ -37,6 +40,7 @@ static buttondata game_make_rect_button(int left, int top, int right, int bottom
     button.code = code;
     button.value = value;
     button.enabled = enabled;
+    button.selected = selected;
     button.text = text;
     return button;
 }
@@ -73,7 +77,9 @@ static std::wstring game_player_color_name(int index)
 static std::wstring game_setup_status(const gamestate& state)
 {
     return L"设置：" + std::to_wstring(state.playercount) + L"人，每人" +
-        std::to_wstring(state.piececount) + L"子。←→人数，↑减棋子，↓加棋子，回车开始。";
+        std::to_wstring(state.piececount) + L"子。步时" + std::to_wstring(time_get_step_seconds()) +
+        L"s，总时" + std::to_wstring(time_get_total_seconds() / 60) +
+        L"min。上下选项，左右调整，回车开始。";
 }
 
 // 这个函数重置为初始选择人数阶段。
@@ -82,6 +88,7 @@ static void game_reset(gamestate& state)
     state.phase = phase_player_count;
     state.playercount = 3;
     state.piececount = 3;
+    state.setupindex = 0;
     state.currentorderindex = 0;
     state.selectedpiece = -1;
     state.winnerindex = -1;
@@ -92,7 +99,53 @@ static void game_reset(gamestate& state)
     state.movetargets.clear();
     state.buttons.clear();
     state.history.clear();
+    time_reset();
+    analysis_reset();
     state.status = game_setup_status(state);
+}
+
+// 这个函数返回设置页指定项目的按钮纵坐标。
+static int game_setup_button_top(int index)
+{
+    return map_setup_first_button_y + index * map_setup_row_gap;
+}
+
+// 这个函数返回每步时长在设置页的显示文字。
+static std::wstring game_step_time_text()
+{
+    return std::to_wstring(time_get_step_seconds()) + L"s";
+}
+
+// 这个函数返回单方总时长在设置页的显示文字。
+static std::wstring game_total_time_text()
+{
+    return std::to_wstring(time_get_total_seconds() / 60) + L"min";
+}
+
+// 这个函数向按钮列表添加一行设置项。
+static void game_add_setup_row(gamestate& state, int index, int minuscode, int pluscode, const std::wstring& text)
+{
+    // top 保存该设置行的按钮顶部坐标。
+    int top = game_setup_button_top(index);
+    // selected 表示该设置行是否为当前键盘焦点。
+    bool selected = state.setupindex == index;
+    // minuswidth 保存减号按钮宽度。
+    int minuswidth = 78;
+    // pluswidth 保存加号按钮宽度。
+    int pluswidth = 78;
+    // gap 保存同一行按钮之间的空隙。
+    int gap = 10;
+    // centerleft 保存中间当前值按钮左边界。
+    int centerleft = map_button_x + minuswidth + gap;
+    // centerright 保存中间当前值按钮右边界。
+    int centerright = map_button_x + map_button_width - pluswidth - gap;
+
+    state.buttons.push_back(game_make_rect_button(map_button_x, top, map_button_x + minuswidth, top + map_button_height,
+        minuscode, 0, L"-", true, selected));
+    state.buttons.push_back(game_make_rect_button(centerleft, top, centerright, top + map_button_height,
+        button_setup_focus, index, text, true, selected));
+    state.buttons.push_back(game_make_rect_button(map_button_x + map_button_width - pluswidth, top,
+        map_button_x + map_button_width, top + map_button_height, pluscode, 0, L"+", true, selected));
 }
 
 // 这个函数刷新当前阶段需要显示的按钮。
@@ -100,39 +153,25 @@ static void game_refresh_buttons(gamestate& state)
 {
     state.buttons.clear();
 
-    if (state.phase == phase_player_count)
+    if (state.phase == phase_player_count || state.phase == phase_piece_count)
     {
-        state.buttons.push_back(game_make_rect_button(map_button_x, 472, map_button_x + 54, 510, button_player_minus, 0, L"-"));
-        state.buttons.push_back(game_make_rect_button(map_button_x + 62, 472, map_button_x + 168, 510, button_none, 0,
-            std::to_wstring(state.playercount) + L" 人", false));
-        state.buttons.push_back(game_make_rect_button(map_button_x + 176, 472, map_button_x + map_button_width, 510, button_player_plus, 0, L"+"));
-        state.buttons.push_back(game_make_button(520, button_piece_count, 3,
-            state.piececount == 3 ? L"每人 3 个棋子（当前）" : L"每人 3 个棋子"));
-        state.buttons.push_back(game_make_button(568, button_piece_count, 6,
-            state.piececount == 6 ? L"每人 6 个棋子（当前）" : L"每人 6 个棋子"));
-        state.buttons.push_back(game_make_button(616, button_piece_count, 10,
-            state.piececount == 10 ? L"每人 10 个棋子（当前）" : L"每人 10 个棋子"));
-        state.buttons.push_back(game_make_button(664, button_start_setup, 0, L"开始游戏"));
-        state.buttons.push_back(game_make_button(710, button_exit, 0, L"退出游戏"));
-    }
-    else if (state.phase == phase_piece_count)
-    {
-        state.buttons.push_back(game_make_button(520, button_piece_count, 3, L"每人 3 个棋子"));
-        state.buttons.push_back(game_make_button(568, button_piece_count, 6, L"每人 6 个棋子"));
-        state.buttons.push_back(game_make_button(616, button_piece_count, 10, L"每人 10 个棋子"));
-        state.buttons.push_back(game_make_button(664, button_back, 0, L"返回上一步"));
-        state.buttons.push_back(game_make_button(710, button_exit, 0, L"退出游戏"));
+        game_add_setup_row(state, 0, button_step_minus, button_step_plus, game_step_time_text());
+        game_add_setup_row(state, 1, button_total_minus, button_total_plus, game_total_time_text());
+        game_add_setup_row(state, 2, button_player_minus, button_player_plus, std::to_wstring(state.playercount) + L" 人");
+        game_add_setup_row(state, 3, button_piece_minus, button_piece_plus, L"每人 " + std::to_wstring(state.piececount) + L" 个");
+        state.buttons.push_back(game_make_button(map_setup_start_button_y, button_start_setup, 0, L"开始游戏"));
+        state.buttons.push_back(game_make_button(map_setup_exit_button_y, button_exit, 0, L"退出游戏"));
     }
     else if (state.phase == phase_select_piece || state.phase == phase_select_target)
     {
-        state.buttons.push_back(game_make_button(664, button_back, 0, L"返回上一步"));
-        state.buttons.push_back(game_make_button(710, button_exit, 0, L"退出游戏"));
+        state.buttons.push_back(game_make_button(map_bottom_button_first_y, button_back, 0, L"返回上一步"));
+        state.buttons.push_back(game_make_button(map_bottom_button_second_y, button_exit, 0, L"退出游戏"));
     }
     else if (state.phase == phase_game_over)
     {
-        state.buttons.push_back(game_make_button(616, button_restart, 0, L"重新开始"));
-        state.buttons.push_back(game_make_button(664, button_back, 0, L"返回上一步"));
-        state.buttons.push_back(game_make_button(710, button_exit, 0, L"退出游戏"));
+        state.buttons.push_back(game_make_button(map_game_over_restart_y, button_restart, 0, L"重新开始"));
+        state.buttons.push_back(game_make_button(map_bottom_button_first_y, button_back, 0, L"返回上一步"));
+        state.buttons.push_back(game_make_button(map_bottom_button_second_y, button_exit, 0, L"退出游戏"));
     }
 }
 
@@ -170,6 +209,7 @@ static void game_create_players(gamestate& state, const boarddata& board, logger
         player.color = game_player_color(index);
         player.colorname = game_player_color_name(index);
         player.targetids = board_get_zone(board, player.targetarm, state.piececount);
+        player.lost = false;
 
         // starts 保存该玩家起始区孔位。
         std::vector<int> starts = board_get_zone(board, player.arm, state.piececount);
@@ -216,6 +256,8 @@ static void game_prepare_start(gamestate& state, const boarddata& board, loggerd
     state.currentorderindex = 0;
     state.selectedpiece = -1;
     state.movetargets.clear();
+    time_start_game(state);
+    analysis_update(board, state);
 
     // playerindex 保存首位玩家。
     int playerindex = state.turnorder.empty() ? -1 : state.turnorder[0];
@@ -223,6 +265,24 @@ static void game_prepare_start(gamestate& state, const boarddata& board, loggerd
         std::to_wstring(state.players[playerindex].id) + L"选择棋子，键盘编号已显示在棋子上。";
     logger_write(logger, L"开始游戏，首先行动：玩家" + std::to_wstring(state.players[playerindex].id));
 }
+
+// 这个函数切换设置页当前选中的项目。
+static void game_select_setup_index(gamestate& state, loggerdata& logger, int index);
+
+// 这个函数调整初始设置阶段的每步时长。
+static void game_adjust_step_time(gamestate& state, loggerdata& logger, int step);
+
+// 这个函数调整初始设置阶段的单方总时长。
+static void game_adjust_total_time(gamestate& state, loggerdata& logger, int step);
+
+// 这个函数调整初始设置阶段的玩家人数。
+static void game_adjust_player_count(gamestate& state, loggerdata& logger, int step);
+
+// 这个函数调整初始设置阶段的每人棋子数量。
+static void game_adjust_piece_count(gamestate& state, loggerdata& logger, int step);
+
+// 这个函数调整设置页当前选中项目的数值。
+static void game_adjust_selected_setup_value(gamestate& state, loggerdata& logger, int step);
 
 // 这个函数返回当前行动玩家下标。
 static int game_current_player(const gamestate& state)
@@ -253,10 +313,11 @@ static void game_next_turn(gamestate& state)
         state.status = L"请玩家" + std::to_wstring(state.players[playerindex].id) +
             L"选择棋子，键盘编号已显示在棋子上。";
     }
+    time_start_turn(state);
 }
 
 // 这个函数撤销上一次移动或取消当前选择。
-static void game_back(gamestate& state, loggerdata& logger)
+static void game_back(gamestate& state, const boarddata& board, loggerdata& logger)
 {
     if (state.phase == phase_piece_count)
     {
@@ -284,6 +345,8 @@ static void game_back(gamestate& state, loggerdata& logger)
                 state.turnorder.clear();
                 state.movetargets.clear();
                 state.selectedpiece = -1;
+                time_stop();
+                analysis_reset();
                 state.status = game_setup_status(state);
                 logger_write(logger, L"返回上一步：从游戏开始返回棋子数量选择");
                 return;
@@ -303,6 +366,8 @@ static void game_back(gamestate& state, loggerdata& logger)
         state.movetargets.clear();
         state.winnerindex = -1;
         state.phase = phase_select_piece;
+        analysis_update(board, state);
+        time_start_turn(state);
         state.status = L"已撤销玩家" + std::to_wstring(state.players[move.playerindex].id) + L"的一步移动。";
         logger_write(logger, L"返回上一步：撤销玩家" + std::to_wstring(state.players[move.playerindex].id) +
             L" 棋子从孔位" + std::to_wstring(move.toid) + L"回到孔位" + std::to_wstring(move.fromid));
@@ -329,39 +394,75 @@ static void game_handle_button(gamestate& state, const boarddata& board, loggerd
     }
     else if (code == button_player_count)
     {
+        state.setupindex = 2;
         state.playercount = value;
         state.status = game_setup_status(state);
         logger_write(logger, L"选择游戏人数：" + std::to_wstring(value));
     }
     else if (code == button_player_minus)
     {
-        // oldcount 保存调整前的人数。
-        int oldcount = state.playercount;
-        if (state.playercount > 2)
-        {
-            --state.playercount;
-        }
-        state.status = game_setup_status(state);
-        logger_write(logger, L"点击减少人数：" + std::to_wstring(oldcount) + L" -> " +
-            std::to_wstring(state.playercount));
+        state.setupindex = 2;
+        game_adjust_player_count(state, logger, -1);
     }
     else if (code == button_player_plus)
     {
-        // oldcount 保存调整前的人数。
-        int oldcount = state.playercount;
-        if (state.playercount < 6)
-        {
-            ++state.playercount;
-        }
-        state.status = game_setup_status(state);
-        logger_write(logger, L"点击增加人数：" + std::to_wstring(oldcount) + L" -> " +
-            std::to_wstring(state.playercount));
+        state.setupindex = 2;
+        game_adjust_player_count(state, logger, 1);
     }
     else if (code == button_piece_count)
     {
+        state.setupindex = 3;
         state.piececount = value;
         state.status = game_setup_status(state);
         logger_write(logger, L"选择每人棋子数量：" + std::to_wstring(value));
+    }
+    else if (code == button_setup_focus)
+    {
+        game_select_setup_index(state, logger, value);
+    }
+    else if (code == button_step_minus)
+    {
+        state.setupindex = 0;
+        game_adjust_step_time(state, logger, -1);
+    }
+    else if (code == button_step_plus)
+    {
+        state.setupindex = 0;
+        game_adjust_step_time(state, logger, 1);
+    }
+    else if (code == button_total_minus)
+    {
+        state.setupindex = 1;
+        game_adjust_total_time(state, logger, -1);
+    }
+    else if (code == button_total_plus)
+    {
+        state.setupindex = 1;
+        game_adjust_total_time(state, logger, 1);
+    }
+    else if (code == button_piece_minus)
+    {
+        state.setupindex = 3;
+        game_adjust_piece_count(state, logger, -1);
+    }
+    else if (code == button_piece_plus)
+    {
+        state.setupindex = 3;
+        game_adjust_piece_count(state, logger, 1);
+    }
+    else if (code == button_step_time)
+    {
+        state.setupindex = 0;
+        time_set_step_seconds(value);
+        state.status = game_setup_status(state);
+        logger_write(logger, L"选择每步时长：" + std::to_wstring(value) + L"秒");
+    }
+    else if (code == button_total_time)
+    {
+        state.setupindex = 1;
+        time_set_total_seconds(value);
+        state.status = game_setup_status(state);
+        logger_write(logger, L"选择单方总时长：" + std::to_wstring(value / 60) + L"分钟");
     }
     else if (code == button_start_setup)
     {
@@ -371,7 +472,7 @@ static void game_handle_button(gamestate& state, const boarddata& board, loggerd
     }
     else if (code == button_back)
     {
-        game_back(state, logger);
+        game_back(state, board, logger);
     }
     else if (code == button_restart)
     {
@@ -425,7 +526,7 @@ static void game_select_piece(gamestate& state, const boarddata& board, loggerda
 }
 
 // 这个函数处理棋盘上的落点选择。
-static void game_select_target(gamestate& state, loggerdata& logger, int pointid)
+static void game_select_target(gamestate& state, const boarddata& board, loggerdata& logger, int pointid)
 {
     if (state.selectedpiece < 0)
     {
@@ -456,6 +557,8 @@ static void game_select_target(gamestate& state, loggerdata& logger, int pointid
     state.history.push_back(move);
 
     state.pieces[state.selectedpiece].pointid = toid;
+    time_finish_turn();
+    analysis_update(board, state);
     logger_write(logger, L"玩家" + std::to_wstring(state.players[playerindex].id) + L"移动棋子：孔位" +
         std::to_wstring(fromid) + L" -> " + std::to_wstring(toid));
 
@@ -466,6 +569,7 @@ static void game_select_target(gamestate& state, loggerdata& logger, int pointid
     {
         state.winnerindex = playerindex;
         state.phase = phase_game_over;
+        time_stop();
         state.status = L"玩家" + std::to_wstring(state.players[playerindex].id) + L"全部进入停车区，获得胜利！";
         logger_write(logger, L"胜利：玩家" + std::to_wstring(state.players[playerindex].id) + L"全部棋子进入停车区");
         return;
@@ -492,7 +596,7 @@ static void game_handle_board_click(gamestate& state, const boarddata& board, lo
     }
     else if (state.phase == phase_select_target)
     {
-        game_select_target(state, logger, pointid);
+        game_select_target(state, board, logger, pointid);
     }
     else
     {
@@ -531,6 +635,143 @@ static bool game_is_setup_phase(const gamestate& state)
     return state.phase == phase_player_count || state.phase == phase_piece_count;
 }
 
+// 这个函数返回设置页项目名称。
+static std::wstring game_setup_index_name(int index)
+{
+    if (index == 0)
+    {
+        return L"每步时长";
+    }
+    if (index == 1)
+    {
+        return L"单方时长";
+    }
+    if (index == 2)
+    {
+        return L"游戏人数";
+    }
+    return L"棋子数量";
+}
+
+// 这个函数切换设置页当前选中的项目。
+static void game_select_setup_index(gamestate& state, loggerdata& logger, int index)
+{
+    // oldindex 保存切换前选中的项目。
+    int oldindex = state.setupindex;
+    if (index < 0)
+    {
+        index = 0;
+    }
+    if (index > 3)
+    {
+        index = 3;
+    }
+
+    state.setupindex = index;
+    state.status = game_setup_status(state);
+    if (oldindex == state.setupindex)
+    {
+        logger_write(logger, L"设置项切换无效：仍在" + game_setup_index_name(state.setupindex));
+    }
+    else
+    {
+        logger_write(logger, L"切换设置项：" + game_setup_index_name(oldindex) + L" -> " +
+            game_setup_index_name(state.setupindex));
+    }
+}
+
+// 这个函数返回每步时长在可选列表中的下标。
+static int game_step_time_index(int seconds)
+{
+    // options 保存每步时长的全部可选值。
+    int options[] = { 15, 30, 60, 90 };
+    for (int index = 0; index < 4; ++index)
+    {
+        if (options[index] == seconds)
+        {
+            return index;
+        }
+    }
+    return 0;
+}
+
+// 这个函数调整初始设置阶段的每步时长。
+static void game_adjust_step_time(gamestate& state, loggerdata& logger, int step)
+{
+    // options 保存每步时长的全部可选值。
+    int options[] = { 15, 30, 60, 90 };
+    // oldseconds 保存调整前的每步秒数。
+    int oldseconds = time_get_step_seconds();
+    // index 保存当前每步秒数在可选列表中的下标。
+    int index = game_step_time_index(oldseconds) + step;
+    if (index < 0)
+    {
+        index = 0;
+    }
+    if (index > 3)
+    {
+        index = 3;
+    }
+
+    time_set_step_seconds(options[index]);
+    state.status = game_setup_status(state);
+    if (oldseconds == time_get_step_seconds())
+    {
+        logger_write(logger, L"调整每步时长无效：已经到边界 " + std::to_wstring(oldseconds) + L"秒");
+    }
+    else
+    {
+        logger_write(logger, L"调整每步时长：" + std::to_wstring(oldseconds) + L"秒 -> " +
+            std::to_wstring(time_get_step_seconds()) + L"秒");
+    }
+}
+
+// 这个函数返回单方总时长在可选列表中的下标。
+static int game_total_time_index(int seconds)
+{
+    // options 保存单方总时长的全部可选值。
+    int options[] = { 5 * 60, 10 * 60, 15 * 60, 30 * 60 };
+    for (int index = 0; index < 4; ++index)
+    {
+        if (options[index] == seconds)
+        {
+            return index;
+        }
+    }
+    return 0;
+}
+
+// 这个函数调整初始设置阶段的单方总时长。
+static void game_adjust_total_time(gamestate& state, loggerdata& logger, int step)
+{
+    // options 保存单方总时长的全部可选值。
+    int options[] = { 5 * 60, 10 * 60, 15 * 60, 30 * 60 };
+    // oldseconds 保存调整前的单方总秒数。
+    int oldseconds = time_get_total_seconds();
+    // index 保存当前单方总时长在可选列表中的下标。
+    int index = game_total_time_index(oldseconds) + step;
+    if (index < 0)
+    {
+        index = 0;
+    }
+    if (index > 3)
+    {
+        index = 3;
+    }
+
+    time_set_total_seconds(options[index]);
+    state.status = game_setup_status(state);
+    if (oldseconds == time_get_total_seconds())
+    {
+        logger_write(logger, L"调整单方时长无效：已经到边界 " + std::to_wstring(oldseconds / 60) + L"分钟");
+    }
+    else
+    {
+        logger_write(logger, L"调整单方时长：" + std::to_wstring(oldseconds / 60) + L"分钟 -> " +
+            std::to_wstring(time_get_total_seconds() / 60) + L"分钟");
+    }
+}
+
 // 这个函数调整初始设置阶段的玩家人数。
 static void game_adjust_player_count(gamestate& state, loggerdata& logger, int step)
 {
@@ -549,11 +790,11 @@ static void game_adjust_player_count(gamestate& state, loggerdata& logger, int s
     state.status = game_setup_status(state);
     if (oldcount == state.playercount)
     {
-        logger_write(logger, L"键盘调整人数无效：已经到边界 " + std::to_wstring(state.playercount));
+        logger_write(logger, L"调整人数无效：已经到边界 " + std::to_wstring(state.playercount));
     }
     else
     {
-        logger_write(logger, L"键盘调整人数：" + std::to_wstring(oldcount) +
+        logger_write(logger, L"调整人数：" + std::to_wstring(oldcount) +
             L" -> " + std::to_wstring(state.playercount));
     }
 }
@@ -595,12 +836,33 @@ static void game_adjust_piece_count(gamestate& state, loggerdata& logger, int st
     state.status = game_setup_status(state);
     if (oldcount == state.piececount)
     {
-        logger_write(logger, L"键盘调整棋子数量无效：已经到边界 " + std::to_wstring(state.piececount));
+        logger_write(logger, L"调整棋子数量无效：已经到边界 " + std::to_wstring(state.piececount));
     }
     else
     {
-        logger_write(logger, L"键盘调整每人棋子数量：" + std::to_wstring(oldcount) +
+        logger_write(logger, L"调整每人棋子数量：" + std::to_wstring(oldcount) +
             L" -> " + std::to_wstring(state.piececount));
+    }
+}
+
+// 这个函数调整设置页当前选中项目的数值。
+static void game_adjust_selected_setup_value(gamestate& state, loggerdata& logger, int step)
+{
+    if (state.setupindex == 0)
+    {
+        game_adjust_step_time(state, logger, step);
+    }
+    else if (state.setupindex == 1)
+    {
+        game_adjust_total_time(state, logger, step);
+    }
+    else if (state.setupindex == 2)
+    {
+        game_adjust_player_count(state, logger, step);
+    }
+    else
+    {
+        game_adjust_piece_count(state, logger, step);
     }
 }
 
@@ -615,22 +877,22 @@ static bool game_process_setup_key(gamestate& state, const boarddata& board, log
     // 方向键只接受真正的方向键，避免 NumLock 关闭的小键盘数字串到设置操作。
     if (key == keyboard_key_left && extended)
     {
-        game_adjust_player_count(state, logger, -1);
+        game_adjust_selected_setup_value(state, logger, -1);
         return true;
     }
     if (key == keyboard_key_right && extended)
     {
-        game_adjust_player_count(state, logger, 1);
+        game_adjust_selected_setup_value(state, logger, 1);
         return true;
     }
     if (key == keyboard_key_up && extended)
     {
-        game_adjust_piece_count(state, logger, -1);
+        game_select_setup_index(state, logger, state.setupindex - 1);
         return true;
     }
     if (key == keyboard_key_down && extended)
     {
-        game_adjust_piece_count(state, logger, 1);
+        game_select_setup_index(state, logger, state.setupindex + 1);
         return true;
     }
     if (key == keyboard_key_enter)
@@ -648,7 +910,7 @@ static void game_process_key(gamestate& state, const boarddata& board, loggerdat
 {
     if (key == keyboard_key_escape || key == keyboard_key_delete)
     {
-        game_back(state, logger);
+        game_back(state, board, logger);
         return;
     }
     if (game_process_setup_key(state, board, logger, key, extended))
@@ -682,6 +944,7 @@ int game_run()
 
     while (state.running)
     {
+        time_update(board, state, logger);
         game_refresh_buttons(state);
         drawer_draw(board, state);
         FlushBatchDraw();

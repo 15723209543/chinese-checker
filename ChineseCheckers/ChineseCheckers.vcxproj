@@ -135,6 +135,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="src\analysis.cpp" />
     <ClCompile Include="src\board.cpp" />
     <ClCompile Include="src\drawer.cpp" />
     <ClCompile Include="src\game.cpp" />
@@ -142,8 +143,11 @@
     <ClCompile Include="src\keyboard.cpp" />
     <ClCompile Include="src\logger.cpp" />
     <ClCompile Include="src\main.cpp" />
+    <ClCompile Include="src\time.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="include\analysis.h" />
+    <ClInclude Include="include\analysis_data.h" />
     <ClInclude Include="include\board.h" />
     <ClInclude Include="include\drawer.h" />
     <ClInclude Include="include\game.h" />
@@ -153,6 +157,7 @@
     <ClInclude Include="include\logger.h" />
     <ClInclude Include="include\main.h" />
     <ClInclude Include="include\mapdata.h" />
+    <ClInclude Include="src\time.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets" />

@@ -11,6 +11,9 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="src\analysis.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
     <ClCompile Include="src\board.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
@@ -32,8 +35,17 @@
     <ClCompile Include="src\main.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="src\time.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="include\analysis.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="include\analysis_data.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
     <ClInclude Include="include\board.h">
       <Filter>头文件</Filter>
     </ClInclude>
@@ -59,6 +71,9 @@
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="include\mapdata.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="src\time.h">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>

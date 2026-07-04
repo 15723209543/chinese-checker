@@ -1,7 +1,9 @@
 #include "keyboard.h"
 
+#include "analysis.h"
 #include "board.h"
 #include "keyboard_data.h"
+#include "time.h"
 
 #include <algorithm>
 
@@ -110,6 +112,7 @@ static void keyboard_next_turn(gamestate& state)
         state.status = L"请玩家" + std::to_wstring(state.players[playerindex].id) +
             L"选择棋子，键盘编号已显示在棋子上。";
     }
+    time_start_turn(state);
 }
 
 // 这个函数取消键盘选中的棋子并返回棋子选择阶段。
@@ -175,7 +178,7 @@ static void keyboard_select_piece(const boarddata& board, gamestate& state, logg
 }
 
 // 这个函数用键盘编号选择当前棋子的落点。
-static void keyboard_select_target(gamestate& state, loggerdata& logger, int number)
+static void keyboard_select_target(const boarddata& board, gamestate& state, loggerdata& logger, int number)
 {
     if (number == keyboard_target_back)
     {
@@ -221,6 +224,8 @@ static void keyboard_select_target(gamestate& state, loggerdata& logger, int num
     state.history.push_back(move);
 
     state.pieces[state.selectedpiece].pointid = toid;
+    time_finish_turn();
+    analysis_update(board, state);
     logger_write(logger, L"键盘移动棋子：玩家" + std::to_wstring(state.players[playerindex].id) +
         L"选择落点编号" + std::to_wstring(number) + L"，孔位" +
         std::to_wstring(fromid) + L" -> " + std::to_wstring(toid));
@@ -232,6 +237,7 @@ static void keyboard_select_target(gamestate& state, loggerdata& logger, int num
     {
         state.winnerindex = playerindex;
         state.phase = phase_game_over;
+        time_stop();
         state.status = L"玩家" + std::to_wstring(state.players[playerindex].id) +
             L"全部进入停车区，获得胜利！";
         logger_write(logger, L"胜利：玩家" + std::to_wstring(state.players[playerindex].id) +
@@ -267,7 +273,7 @@ void keyboard_handle_key(const boarddata& board, gamestate& state, loggerdata& l
     }
     else if (state.phase == phase_select_target)
     {
-        keyboard_select_target(state, logger, number);
+        keyboard_select_target(board, state, logger, number);
     }
     else
     {
@@ -298,7 +304,7 @@ void keyboard_handle_char(const boarddata& board, gamestate& state, loggerdata& 
     }
     else if (state.phase == phase_select_target)
     {
-        keyboard_select_target(state, logger, number);
+        keyboard_select_target(board, state, logger, number);
     }
     else
     {
